@@ -9,6 +9,12 @@ const notoSansJP = Noto_Sans_JP({ subsets: ['latin'], variable: '--font-sans' })
 export const metadata: Metadata = {
   title: 'Gourmet Hunter SEIYA - 人生のフルコース',
   description: 'トリコにインスパイアされた、自分だけの「人生のフルコース」と「料理ジャンル別ランキング」を管理するグルメ記録アプリ。カレンダーで食の記録を振り返ろう。',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: '美食フルコース',
+  },
 }
 
 export const viewport: Viewport = {
