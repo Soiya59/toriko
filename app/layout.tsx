@@ -1,6 +1,7 @@
 import React from "react"
 import type { Metadata, Viewport } from 'next'
 import { Noto_Sans_JP } from 'next/font/google'
+import { Toaster } from '@/components/ui/toaster'
 
 import './globals.css'
 
@@ -36,7 +37,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={`${notoSansJP.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${notoSansJP.variable} font-sans antialiased`}>
+        {children}
+        <Toaster />
+      </body>
     </html>
   )
 }

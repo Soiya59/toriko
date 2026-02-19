@@ -1,5 +1,6 @@
 "use server"
 
+import { revalidatePath } from "next/cache"
 import { createServerClient } from "@/lib/supabase"
 import { upsertRankingItem } from "@/lib/supabase-data"
 import type { GourmetItem } from "@/lib/data"
@@ -73,6 +74,9 @@ export async function saveRankingItem(
       itemId: item.id,
       timestamp: new Date().toISOString(),
     })
+
+    // ページを再検証してデータを即座に反映
+    revalidatePath("/")
 
     return { success: true }
   } catch (error) {

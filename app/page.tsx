@@ -123,18 +123,19 @@ export default function Page() {
                   
                   if (!result.success) {
                     console.error("[Client] 保存に失敗しました:", result.error)
-                    alert(result.error || "保存に失敗しました")
+                    // エラーはRegistrationForm内でトースト通知されるため、ここでは再スローするだけ
                     throw new Error(result.error || "保存に失敗しました")
                   }
                   
                   console.log("[Client] 保存処理成功")
+                  // 成功通知はRegistrationForm内で表示される
                 } catch (err) {
                   console.error("[Client] 保存処理で例外が発生しました:", err)
                   if (err instanceof Error) {
                     console.error("[Client] エラーメッセージ:", err.message)
                     console.error("[Client] エラースタック:", err.stack)
-                    alert(err.message)
                   }
+                  // エラーはRegistrationForm内でトースト通知されるため、再スロー
                   throw err
                 }
               }}

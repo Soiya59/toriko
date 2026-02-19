@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect, type FormEvent, type ChangeEvent } from "react"
 import { useStore } from "@/lib/store"
 import type { Dish } from "@/lib/data"
-import { Camera, Plus, Check } from "lucide-react"
+import { Camera, Plus, Check, Loader2 } from "lucide-react"
 import { format } from "date-fns"
+import { useToast } from "@/hooks/use-toast"
 
 type Props = {
   editingItem: Dish | null
@@ -19,6 +20,7 @@ type Props = {
 
 export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersist }: Props) {
   const { categories, addDish, updateDish, addCategory } = useStore()
+  const { toast } = useToast()
   const [categoryId, setCategoryId] = useState("")
   const [newCategoryName, setNewCategoryName] = useState("")
   const [isNewCategory, setIsNewCategory] = useState(false)
@@ -28,6 +30,7 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
   const [comment, setComment] = useState("")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** 新しく写真が選ばれた場合のみ true（Storage アップロード対象） */
   const hasNewImageFile = useRef(false)
@@ -90,6 +93,9 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
 
+    // 既に保存中の場合は処理を中断
+    if (isSaving) return
+
     let catId = categoryId
     if (isNewCategory && newCategoryName.trim()) {
       catId = addCategory(newCategoryName.trim())
@@ -97,37 +103,55 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
 
     if (!catId || !dishName.trim() || !score || !date) return
 
-    const scoreNum = Number.parseFloat(score)
-    const payload = {
-      name: dishName.trim(),
-      categoryId: catId,
-      score: scoreNum,
-      comment: comment.trim(),
-      date,
-      image: imagePreview,
-    }
+    setIsSaving(true)
 
-    if (editingItem) {
-      // 写真: 新しく選ばれた場合のみ URL を更新。未選択の場合は既存画像を維持
-      const imageToSave = hasNewImageFile.current ? imagePreview : (editingItem.image ?? imagePreview)
-      const updatedItem: Dish = {
-        id: editingItem.id,
-        ...payload,
-        image: imageToSave,
+    try {
+      const scoreNum = Number.parseFloat(score)
+      const payload = {
+        name: dishName.trim(),
+        categoryId: catId,
+        score: scoreNum,
+        comment: comment.trim(),
+        date,
+        image: imagePreview,
       }
-      updateDish(editingItem.id, {
-        ...payload,
-        image: imageToSave,
-      })
-      await onPersist?.(updatedItem, { previousCategoryId: editingItem.categoryId })
-    } else {
-      const newId = addDish(payload)
-      const newItem: Dish = { id: newId, ...payload }
-      await onPersist?.(newItem, {})
-    }
 
-    setSuccess(true)
-    setTimeout(resetFormAndComplete, 1200)
+      if (editingItem) {
+        // 写真: 新しく選ばれた場合のみ URL を更新。未選択の場合は既存画像を維持
+        const imageToSave = hasNewImageFile.current ? imagePreview : (editingItem.image ?? imagePreview)
+        const updatedItem: Dish = {
+          id: editingItem.id,
+          ...payload,
+          image: imageToSave,
+        }
+        updateDish(editingItem.id, {
+          ...payload,
+          image: imageToSave,
+        })
+        await onPersist?.(updatedItem, { previousCategoryId: editingItem.categoryId })
+      } else {
+        const newId = addDish(payload)
+        const newItem: Dish = { id: newId, ...payload }
+        await onPersist?.(newItem, {})
+      }
+
+      // 成功通知を表示
+      toast({
+        title: "登録しました！",
+        description: editingItem ? "料理の情報を更新しました" : "新しい料理を登録しました",
+      })
+
+      setSuccess(true)
+      setTimeout(resetFormAndComplete, 1200)
+    } catch (error) {
+      // エラー通知を表示
+      toast({
+        title: "エラーが発生しました",
+        description: error instanceof Error ? error.message : "保存に失敗しました",
+        variant: "destructive",
+      })
+      setIsSaving(false)
+    }
   }
 
   if (success) {
@@ -305,9 +329,17 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
       {/* Submit */}
       <button
         type="submit"
-        className="mt-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98]"
+        disabled={isSaving}
+        className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
       >
-        {editingItem ? "更新する" : "この料理を登録する"}
+        {isSaving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>保存中...</span>
+          </>
+        ) : (
+          <span>{editingItem ? "更新する" : "この料理を登録する"}</span>
+        )}
       </button>
     </form>
   )
