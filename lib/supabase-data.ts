@@ -79,29 +79,62 @@ export async function upsertRankingItem(
   item: GourmetItem,
   options?: { previousCategoryId?: string }
 ): Promise<{ error: unknown }> {
-  const previousCategoryId = options?.previousCategoryId
-  const categoryChanged =
-    Boolean(previousCategoryId) && previousCategoryId !== item.categoryId
+  try {
+    // 環境変数のチェック
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !supabaseKey) {
+      const errorMsg = `環境変数が設定されていません: NEXT_PUBLIC_SUPABASE_URL=${!!supabaseUrl}, NEXT_PUBLIC_SUPABASE_ANON_KEY=${!!supabaseKey}`
+      console.error(errorMsg)
+      return { error: new Error(errorMsg) }
+    }
 
-  const payload = itemToRow(item)
-  const table = client.from("ranking_items")
+    // 保存処理開始ログ
+    console.log("保存処理開始:", {
+      itemId: item.id,
+      name: item.name,
+      categoryId: item.categoryId,
+      score: item.score,
+      date: item.date,
+      comment: item.comment,
+      hasImage: !!item.image,
+      previousCategoryId: options?.previousCategoryId,
+    })
 
-  console.log("送るデータ:", payload)
-  const upsertRes = await table.upsert(payload, { onConflict: "id" })
-  const res = upsertRes as { data: unknown; error: unknown }
-  const err = res.error
-  if (err) {
-    const e = err as { message?: string; code?: string; details?: string }
-    console.error("Supabaseエラー詳細:", e?.message ?? e?.code ?? e?.details ?? "(内容なし)")
-    console.error("Supabase エラーオブジェクト:", e)
-    console.error("Supabase レスポンス全体:", res)
-    return { error: err }
+    const previousCategoryId = options?.previousCategoryId
+    const categoryChanged =
+      Boolean(previousCategoryId) && previousCategoryId !== item.categoryId
+
+    const payload = itemToRow(item)
+    const table = client.from("ranking_items")
+
+    console.log("送るデータ:", payload)
+    const upsertRes = await table.upsert(payload, { onConflict: "id" })
+    const res = upsertRes as { data: unknown; error: unknown }
+    const err = res.error
+    if (err) {
+      const e = err as { message?: string; code?: string; details?: string }
+      console.error("Supabaseエラー詳細:", e?.message ?? e?.code ?? e?.details ?? "(内容なし)")
+      console.error("Supabase エラーオブジェクト:", e)
+      console.error("Supabase レスポンス全体:", res)
+      return { error: err }
+    }
+
+    console.log("upsert成功:", res.data)
+
+    if (categoryChanged && previousCategoryId) {
+      await recalcRankAndCategoryImage(client, previousCategoryId)
+    }
+    await recalcRankAndCategoryImage(client, item.categoryId)
+
+    console.log("保存処理完了")
+    return { error: null }
+  } catch (error) {
+    console.error("保存処理で例外が発生しました:", error)
+    if (error instanceof Error) {
+      console.error("エラーメッセージ:", error.message)
+      console.error("エラースタック:", error.stack)
+    }
+    return { error }
   }
-
-  if (categoryChanged && previousCategoryId) {
-    await recalcRankAndCategoryImage(client, previousCategoryId)
-  }
-  await recalcRankAndCategoryImage(client, item.categoryId)
-
-  return { error: null }
 }

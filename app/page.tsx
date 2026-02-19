@@ -119,17 +119,46 @@ export default function Page() {
               onClearEdit={() => setEditingItem(null)}
               onPersist={async (item, opts) => {
                 try {
+                  // 環境変数のチェック
+                  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+                  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+                  if (!supabaseUrl || !supabaseKey) {
+                    const errorMsg = `環境変数が設定されていません: NEXT_PUBLIC_SUPABASE_URL=${!!supabaseUrl}, NEXT_PUBLIC_SUPABASE_ANON_KEY=${!!supabaseKey}`
+                    console.error(errorMsg)
+                    alert(errorMsg)
+                    throw new Error(errorMsg)
+                  }
+
+                  // 保存処理開始ログ
+                  console.log("保存処理開始 (onPersist):", {
+                    itemId: item.id,
+                    name: item.name,
+                    categoryId: item.categoryId,
+                    score: item.score,
+                    date: item.date,
+                    comment: item.comment,
+                    hasImage: !!item.image,
+                    previousCategoryId: opts?.previousCategoryId,
+                  })
+
                   const client = createClient()
                   const { error } = await upsertRankingItem(client, item, opts)
                   if (error) {
                     const message =
                       error instanceof Error ? error.message : String(error)
+                    console.error("保存に失敗しました:", message)
                     alert(`保存に失敗しました: ${message}`)
                     throw error
                   }
+                  console.log("保存処理成功 (onPersist)")
                 } catch (err) {
-                  if (err instanceof Error && err.message.includes("環境変数")) {
-                    alert(err.message)
+                  console.error("保存処理で例外が発生しました (onPersist):", err)
+                  if (err instanceof Error) {
+                    console.error("エラーメッセージ:", err.message)
+                    console.error("エラースタック:", err.stack)
+                    if (err.message.includes("環境変数")) {
+                      alert(err.message)
+                    }
                   }
                   throw err
                 }
