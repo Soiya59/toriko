@@ -24,6 +24,19 @@ export type CategoryRow = {
   image_url: string | null
 }
 
+/** DB の ranking_items 行を GourmetItem に変換（eaten_at → date, category_id → categoryId） */
+export function rowToItem(row: RankingRow): GourmetItem {
+  return {
+    id: row.id,
+    categoryId: row.category_id,
+    name: row.name,
+    score: row.score,
+    date: row.eaten_at,
+    comment: row.comment ?? "",
+    image: row.image_url ?? null,
+  }
+}
+
 // 実 Supabase クライアントを渡す想定。any にすることでパッケージ未導入でもコンパイル可能
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Client = any
@@ -67,6 +80,40 @@ async function recalcRankAndCategoryImage(
 
   const firstImage = sorted[0]?.image_url ?? null
   await client.from("categories").update({ image_url: firstImage }).eq("id", categoryId)
+}
+
+/**
+ * 全カテゴリーと全ランキング項目を Supabase から取得する。
+ * 新規追加されたカテゴリー（例: cat-10 うどん）や ranking_items も漏れなく取得する。
+ */
+export async function fetchAllCategoriesAndItems(client: Client): Promise<{
+  categories: CategoryRow[]
+  items: RankingRow[]
+  error: unknown
+}> {
+  try {
+    const [catRes, itemsRes] = await Promise.all([
+      client.from("categories").select("id, name, image_url").order("name"),
+      client
+        .from("ranking_items")
+        .select("id, category_id, name, score, eaten_at, comment, image_url, rank")
+        .order("category_id")
+        .order("score", { ascending: false }),
+    ])
+
+    const catData = catRes as { data: CategoryRow[] | null; error: unknown }
+    const itemsData = itemsRes as { data: RankingRow[] | null; error: unknown }
+
+    if (catData.error) return { categories: [], items: [], error: catData.error }
+    if (itemsData.error) return { categories: [], items: [], error: itemsData.error }
+
+    const categories = (catData.data ?? []) as CategoryRow[]
+    const items = (itemsData.data ?? []) as RankingRow[]
+
+    return { categories, items, error: null }
+  } catch (e) {
+    return { categories: [], items: [], error: e }
+  }
 }
 
 /**

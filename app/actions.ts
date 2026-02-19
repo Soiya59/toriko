@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache"
 import { createServerClient } from "@/lib/supabase"
-import { upsertRankingItem } from "@/lib/supabase-data"
+import { upsertRankingItem, fetchAllCategoriesAndItems, rowToItem } from "@/lib/supabase-data"
 import type { GourmetItem } from "@/lib/data"
+import type { Category } from "@/lib/data"
 
 /**
  * ランキング項目を保存するServer Action
@@ -93,6 +94,50 @@ export async function saveRankingItem(
     return {
       success: false,
       error: `予期しないエラーが発生しました: ${String(error)}`,
+    }
+  }
+}
+
+/**
+ * 初期表示用に Supabase から全カテゴリーと全ランキング項目を取得する。
+ * キャッシュを使わず常に最新を取得するため、ページ読み込み時に呼び出す。
+ */
+export async function getInitialData(): Promise<{
+  success: boolean
+  categories?: Category[]
+  dishes?: GourmetItem[]
+  error?: string
+}> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !supabaseKey) {
+      return {
+        success: false,
+        error: "環境変数が設定されていません",
+      }
+    }
+
+    const client = createServerClient()
+    const { categories: catRows, items: itemRows, error } = await fetchAllCategoriesAndItems(client)
+
+    if (error) {
+      console.error("[Server Action] getInitialData 取得エラー:", error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    const categories: Category[] = catRows.map((c) => ({ id: c.id, name: c.name }))
+    const dishes: GourmetItem[] = itemRows.map(rowToItem)
+
+    return { success: true, categories, dishes }
+  } catch (e) {
+    console.error("[Server Action] getInitialData 例外:", e)
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
     }
   }
 }

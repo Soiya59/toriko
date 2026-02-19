@@ -7,7 +7,8 @@ import { FullCourseView } from "@/components/full-course-view"
 import { RegistrationForm } from "@/components/registration-form"
 import { CalendarView } from "@/components/calendar-view"
 import type { Dish } from "@/lib/data"
-import { saveRankingItem } from "@/app/actions"
+import { hydrateStore } from "@/lib/store"
+import { saveRankingItem, getInitialData } from "@/app/actions"
 import {
   List,
   Utensils,
@@ -51,6 +52,15 @@ export default function Page() {
       setIsTransitioning(false)
     }, 150)
   }
+
+  // ページ読み込み時に Supabase から最新データを取得してストアに反映
+  useEffect(() => {
+    getInitialData().then((res) => {
+      if (res.success && res.categories && res.dishes) {
+        hydrateStore(res.categories, res.dishes)
+      }
+    })
+  }, [])
 
   // Scroll to top when tab changes
   useEffect(() => {
@@ -118,24 +128,21 @@ export default function Page() {
               onClearEdit={() => setEditingItem(null)}
               onPersist={async (item, opts) => {
                 try {
-                  // Server Actionを呼び出して保存
                   const result = await saveRankingItem(item, opts)
-                  
                   if (!result.success) {
                     console.error("[Client] 保存に失敗しました:", result.error)
-                    // エラーはRegistrationForm内でトースト通知されるため、ここでは再スローするだけ
                     throw new Error(result.error || "保存に失敗しました")
                   }
-                  
-                  console.log("[Client] 保存処理成功")
-                  // 成功通知はRegistrationForm内で表示される
+                  // 保存後にサーバーから再取得し、ランク順・カテゴリー一覧を最新に反映
+                  const fresh = await getInitialData()
+                  if (fresh.success && fresh.categories && fresh.dishes) {
+                    hydrateStore(fresh.categories, fresh.dishes)
+                  }
                 } catch (err) {
                   console.error("[Client] 保存処理で例外が発生しました:", err)
                   if (err instanceof Error) {
                     console.error("[Client] エラーメッセージ:", err.message)
-                    console.error("[Client] エラースタック:", err.stack)
                   }
-                  // エラーはRegistrationForm内でトースト通知されるため、再スロー
                   throw err
                 }
               }}

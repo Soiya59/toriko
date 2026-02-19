@@ -5,6 +5,8 @@ import { Toaster } from '@/components/ui/toaster'
 
 import './globals.css'
 
+export const dynamic = 'force-dynamic'
+
 const notoSansJP = Noto_Sans_JP({ subsets: ['latin'], variable: '--font-sans' })
 
 export const metadata: Metadata = {

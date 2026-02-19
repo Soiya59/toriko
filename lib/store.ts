@@ -37,6 +37,19 @@ function getSnapshot() {
   return store
 }
 
+/**
+ * Supabase から取得したデータでストアを上書きする。
+ * ページ読み込み時（または revalidate 後）に呼び出し、一覧に最新データを反映する。
+ */
+export function hydrateStore(categories: Category[], dishes: Dish[]) {
+  store = {
+    ...store,
+    categories: [...categories],
+    dishes: [...dishes],
+  }
+  emitChange()
+}
+
 export function useStore() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 
