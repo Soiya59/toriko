@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   title: 'Gourmet Hunter SEIYA - 人生のフルコース',
   description: 'トリコにインスパイアされた、自分だけの「人生のフルコース」と「料理ジャンル別ランキング」を管理するグルメ記録アプリ。カレンダーで食の記録を振り返ろう。',
   manifest: '/manifest.json',
+  icons: {
+    icon: '/icon.png',
+    apple: '/icon.png',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
