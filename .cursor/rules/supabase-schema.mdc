@@ -1,0 +1,25 @@
+---
+description: Supabase スキーマ・ID体系・カラムマッピングの厳守仕様
+alwaysApply: true
+---
+
+# Supabase 同期仕様（厳守）
+
+## 1. ID はすべて TEXT 型
+
+- **categories.id** および **ranking_items.id** は **UUID ではなく TEXT**。
+- `cat-1`, `cat-10`, `d-1739123456789` のような文字列 ID をそのまま保存・利用する。
+- **禁止**: UUID の生成・バリデーション、UUID 型への変換。
+- **full_course** 等の外部キーも TEXT で ranking_items.id と紐付く。
+
+## 2. カラム名マッピング（date → eaten_at）
+
+- アプリ内の **GourmetItem** 型では **date** を使用。
+- Supabase の **ranking_items** テーブルのカラム名は **eaten_at**。
+- **lib/supabase-data.ts** の **itemToRow** で `eaten_at: item.date` と変換するロジックを**維持する**。新規コードで date を直接 DB に送らない。
+
+## 3. コード提案時の前提
+
+- すべての ID は TEXT ベース。
+- DB 保存時のみ date → eaten_at に変換（itemToRow を経由）。
+- 関連テーブル・外部キーも TEXT で整合させる。
