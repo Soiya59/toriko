@@ -2,11 +2,6 @@
 
 import { useSyncExternalStore, useCallback } from "react"
 import type { Dish, Category } from "./data"
-import {
-  INITIAL_CATEGORIES,
-  INITIAL_DISHES,
-  INITIAL_FULL_COURSE,
-} from "./data"
 
 type Store = {
   categories: Category[]
@@ -14,10 +9,11 @@ type Store = {
   fullCourse: Record<string, string | null>
 }
 
+/** 初期値は空。データは getInitialData() → hydrateStore() で Supabase から取得して反映する */
 let store: Store = {
-  categories: [...INITIAL_CATEGORIES],
-  dishes: [...INITIAL_DISHES],
-  fullCourse: { ...INITIAL_FULL_COURSE },
+  categories: [],
+  dishes: [],
+  fullCourse: {},
 }
 
 const listeners = new Set<() => void>()
@@ -39,13 +35,18 @@ function getSnapshot() {
 
 /**
  * Supabase から取得したデータでストアを上書きする。
- * ページ読み込み時（または revalidate 後）に呼び出し、一覧に最新データを反映する。
+ * ページ読み込み時（または revalidate 後）に呼び出し、一覧・フルコースに最新データを反映する。
  */
-export function hydrateStore(categories: Category[], dishes: Dish[]) {
+export function hydrateStore(
+  categories: Category[],
+  dishes: Dish[],
+  fullCourse?: Record<string, string | null>
+) {
   store = {
     ...store,
     categories: [...categories],
     dishes: [...dishes],
+    ...(fullCourse != null && { fullCourse: { ...fullCourse } }),
   }
   emitChange()
 }

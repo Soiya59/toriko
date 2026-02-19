@@ -38,7 +38,11 @@ const SLOT_TEXT_COLORS: Record<string, string> = {
   drink: "text-indigo-700",
 }
 
-export function FullCourseView() {
+type Props = {
+  onSaveFullCourse?: (fullCourse: Record<string, string | null>) => void | Promise<void>
+}
+
+export function FullCourseView({ onSaveFullCourse }: Props) {
   const { fullCourse, getDishById, getCategoryById, categories, getDishesForCategory, setFullCourseSlot, dishes } = useStore()
   const [selectingSlot, setSelectingSlot] = useState<string | null>(null)
   const [search, setSearch] = useState("")
@@ -184,8 +188,10 @@ export function FullCourseView() {
             <div className="border-b border-border px-4 py-2">
               <button
                 type="button"
-                onClick={() => {
-                  setFullCourseSlot(selectingSlot, null)
+                onClick={async () => {
+                  const next = { ...fullCourse, [selectingSlot!]: null }
+                  await onSaveFullCourse?.(next)
+                  setFullCourseSlot(selectingSlot!, null)
                   setSelectingSlot(null)
                 }}
                 className="w-full rounded-lg px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted transition-colors"
@@ -205,7 +211,9 @@ export function FullCourseView() {
                     <button
                       key={dish.id}
                       type="button"
-                      onClick={() => {
+                      onClick={async () => {
+                        const next = { ...fullCourse, [selectingSlot]: dish.id }
+                        await onSaveFullCourse?.(next)
                         setFullCourseSlot(selectingSlot, dish.id)
                         setSelectingSlot(null)
                       }}

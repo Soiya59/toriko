@@ -4,6 +4,7 @@
  * クライアント未導入時はこのモジュールを import しなければエラーにならない。
  */
 import type { GourmetItem } from "./data"
+import { FULL_COURSE_SLOTS } from "./data"
 
 /** DB の ranking_items 行（snake_case） */
 export type RankingRow = {
@@ -113,6 +114,58 @@ export async function fetchAllCategoriesAndItems(client: Client): Promise<{
     return { categories, items, error: null }
   } catch (e) {
     return { categories: [], items: [], error: e }
+  }
+}
+
+const FULL_COURSE_USER_ID = "default"
+
+/**
+ * 保存済みフルコース（スロット → 料理ID）を取得する。
+ */
+export async function fetchFullCourse(client: Client): Promise<{
+  fullCourse: Record<string, string | null>
+  error: unknown
+}> {
+  try {
+    const { data, error } = await client
+      .from("full_course")
+      .select("slot_key, dish_id")
+      .eq("user_id", FULL_COURSE_USER_ID)
+
+    if (error) return { fullCourse: {}, error }
+
+    const rows = (data ?? []) as { slot_key: string; dish_id: string | null }[]
+    const fullCourse: Record<string, string | null> = {}
+    for (const slot of FULL_COURSE_SLOTS) {
+      const row = rows.find((r) => r.slot_key === slot.key)
+      fullCourse[slot.key] = row?.dish_id ?? null
+    }
+    return { fullCourse, error: null }
+  } catch (e) {
+    return { fullCourse: {}, error: e }
+  }
+}
+
+/**
+ * フルコースのスロット割り当てを保存する。全スロット分を upsert する。
+ */
+export async function saveFullCourse(
+  client: Client,
+  fullCourse: Record<string, string | null>
+): Promise<{ error: unknown }> {
+  try {
+    const rows = FULL_COURSE_SLOTS.map((slot) => ({
+      user_id: FULL_COURSE_USER_ID,
+      slot_key: slot.key,
+      dish_id: fullCourse[slot.key] ?? null,
+    }))
+
+    const { error } = await client.from("full_course").upsert(rows, {
+      onConflict: "user_id,slot_key",
+    })
+    return { error: error ?? null }
+  } catch (e) {
+    return { error: e }
   }
 }
 

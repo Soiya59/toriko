@@ -8,12 +8,15 @@ type Props = {
   dishId: string
   dishName: string
   onClose: () => void
+  onSaveFullCourse?: (fullCourse: Record<string, string | null>) => void | Promise<void>
 }
 
-export function FullCourseSlotPicker({ dishId, dishName, onClose }: Props) {
+export function FullCourseSlotPicker({ dishId, dishName, onClose, onSaveFullCourse }: Props) {
   const { fullCourse, setFullCourseSlot, getDishById } = useStore()
 
-  function handleSelect(slotKey: string) {
+  async function handleSelect(slotKey: string) {
+    const next = { ...fullCourse, [slotKey]: dishId }
+    await onSaveFullCourse?.(next)
     setFullCourseSlot(slotKey, dishId)
     onClose()
   }

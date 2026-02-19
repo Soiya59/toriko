@@ -8,7 +8,7 @@ import { RegistrationForm } from "@/components/registration-form"
 import { CalendarView } from "@/components/calendar-view"
 import type { Dish } from "@/lib/data"
 import { hydrateStore } from "@/lib/store"
-import { saveRankingItem, getInitialData } from "@/app/actions"
+import { saveRankingItem, getInitialData, saveFullCourseSelection } from "@/app/actions"
 import {
   List,
   Utensils,
@@ -57,7 +57,7 @@ export default function Page() {
   useEffect(() => {
     getInitialData().then((res) => {
       if (res.success && res.categories && res.dishes) {
-        hydrateStore(res.categories, res.dishes)
+        hydrateStore(res.categories, res.dishes, res.fullCourse)
       }
     })
   }, [])
@@ -115,12 +115,21 @@ export default function Page() {
                   categoryId={screen.categoryId}
                   onBack={navigateBackToList}
                   onEditItem={handleEditItem}
+                  onSaveFullCourse={async (fullCourse) => {
+                    await saveFullCourseSelection(fullCourse)
+                  }}
                 />
               )}
             </>
           )}
           {tab === "calendar" && <CalendarView />}
-          {tab === "fullcourse" && <FullCourseView />}
+          {tab === "fullcourse" && (
+            <FullCourseView
+              onSaveFullCourse={async (fullCourse) => {
+                await saveFullCourseSelection(fullCourse)
+              }}
+            />
+          )}
           {tab === "register" && (
             <RegistrationForm
               editingItem={editingItem}
@@ -136,7 +145,7 @@ export default function Page() {
                   // 保存後にサーバーから再取得し、ランク順・カテゴリー一覧を最新に反映
                   const fresh = await getInitialData()
                   if (fresh.success && fresh.categories && fresh.dishes) {
-                    hydrateStore(fresh.categories, fresh.dishes)
+                    hydrateStore(fresh.categories, fresh.dishes, fresh.fullCourse)
                   }
                 } catch (err) {
                   console.error("[Client] 保存処理で例外が発生しました:", err)

@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache"
 import { createServerClient } from "@/lib/supabase"
-import { upsertRankingItem, fetchAllCategoriesAndItems, rowToItem } from "@/lib/supabase-data"
+import {
+  upsertRankingItem,
+  fetchAllCategoriesAndItems,
+  fetchFullCourse,
+  saveFullCourse,
+  rowToItem,
+} from "@/lib/supabase-data"
 import type { GourmetItem } from "@/lib/data"
 import type { Category } from "@/lib/data"
 
@@ -99,13 +105,14 @@ export async function saveRankingItem(
 }
 
 /**
- * 初期表示用に Supabase から全カテゴリーと全ランキング項目を取得する。
+ * 初期表示用に Supabase から全カテゴリー・全ランキング項目・フルコース割り当てを取得する。
  * キャッシュを使わず常に最新を取得するため、ページ読み込み時に呼び出す。
  */
 export async function getInitialData(): Promise<{
   success: boolean
   categories?: Category[]
   dishes?: GourmetItem[]
+  fullCourse?: Record<string, string | null>
   error?: string
 }> {
   try {
@@ -119,8 +126,12 @@ export async function getInitialData(): Promise<{
     }
 
     const client = createServerClient()
-    const { categories: catRows, items: itemRows, error } = await fetchAllCategoriesAndItems(client)
+    const [catAndItems, fullCourseRes] = await Promise.all([
+      fetchAllCategoriesAndItems(client),
+      fetchFullCourse(client),
+    ])
 
+    const { categories: catRows, items: itemRows, error } = catAndItems
     if (error) {
       console.error("[Server Action] getInitialData 取得エラー:", error)
       return {
@@ -131,10 +142,47 @@ export async function getInitialData(): Promise<{
 
     const categories: Category[] = catRows.map((c) => ({ id: c.id, name: c.name }))
     const dishes: GourmetItem[] = itemRows.map(rowToItem)
+    const fullCourse = fullCourseRes.error ? {} : fullCourseRes.fullCourse
 
-    return { success: true, categories, dishes }
+    return { success: true, categories, dishes, fullCourse }
   } catch (e) {
     console.error("[Server Action] getInitialData 例外:", e)
+    return {
+      success: false,
+      error: e instanceof Error ? e.message : String(e),
+    }
+  }
+}
+
+/**
+ * フルコースのスロット割り当てを Supabase に保存する。
+ * フルコース画面で料理を選んだ瞬間に呼び出す。
+ */
+export async function saveFullCourseSelection(
+  fullCourse: Record<string, string | null>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !supabaseKey) {
+      return { success: false, error: "環境変数が設定されていません" }
+    }
+
+    const client = createServerClient()
+    const { error } = await saveFullCourse(client, fullCourse)
+
+    if (error) {
+      console.error("[Server Action] saveFullCourseSelection エラー:", error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    }
+
+    revalidatePath("/")
+    return { success: true }
+  } catch (e) {
+    console.error("[Server Action] saveFullCourseSelection 例外:", e)
     return {
       success: false,
       error: e instanceof Error ? e.message : String(e),

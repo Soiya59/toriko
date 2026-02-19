@@ -10,6 +10,7 @@ type Props = {
   categoryId: string
   onBack: () => void
   onEditItem?: (item: Dish) => void
+  onSaveFullCourse?: (fullCourse: Record<string, string | null>) => void | Promise<void>
 }
 
 function RankBadge({ rank }: { rank: number }) {
@@ -50,7 +51,7 @@ function RankBadge({ rank }: { rank: number }) {
   )
 }
 
-export function RankingView({ categoryId, onBack, onEditItem }: Props) {
+export function RankingView({ categoryId, onBack, onEditItem, onSaveFullCourse }: Props) {
   const { getCategoryById, getDishesForCategory } = useStore()
   const category = getCategoryById(categoryId)
   const dishes = getDishesForCategory(categoryId)
@@ -156,6 +157,7 @@ export function RankingView({ categoryId, onBack, onEditItem }: Props) {
           dishId={slotPickerDish.id}
           dishName={slotPickerDish.name}
           onClose={() => setSlotPickerDish(null)}
+          onSaveFullCourse={onSaveFullCourse}
         />
       )}
     </>
