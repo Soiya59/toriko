@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useStore } from "@/lib/store"
 import type { Dish } from "@/lib/data"
 import { ArrowLeft, Crown, HelpCircle, Utensils, Pencil } from "lucide-react"
@@ -55,11 +55,24 @@ export function RankingView({ categoryId, onBack, onEditItem, onSaveFullCourse }
   const { getCategoryById, getDishesForCategory } = useStore()
   const category = getCategoryById(categoryId)
   const dishes = getDishesForCategory(categoryId)
+  const listRef = useRef<HTMLDivElement>(null)
+  const previousDishesLengthRef = useRef(dishes.length)
 
   const [slotPickerDish, setSlotPickerDish] = useState<{
     id: string
     name: string
   } | null>(null)
+
+  // 新しい項目が追加されたら自動スクロール
+  useEffect(() => {
+    if (dishes.length > previousDishesLengthRef.current && dishes.length > 0) {
+      // 新しい項目が追加された場合、一番上（1位）にスクロール
+      setTimeout(() => {
+        listRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      }, 100)
+    }
+    previousDishesLengthRef.current = dishes.length
+  }, [dishes.length])
 
   if (!category) return null
 
@@ -81,7 +94,7 @@ export function RankingView({ categoryId, onBack, onEditItem, onSaveFullCourse }
         </div>
 
         {/* Ranking Cards */}
-        <div className="flex flex-col gap-3">
+        <div ref={listRef} className="flex flex-col gap-3">
           {dishes.map((dish, idx) => {
             const rank = idx + 1
             return (

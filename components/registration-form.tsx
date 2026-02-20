@@ -102,12 +102,47 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
       catId = addCategory(newCategoryName.trim())
     }
 
-    if (!catId || !dishName.trim() || !score || !date) return
+    // 入力値の正規化（全角・半角スペース、特殊文字の除去）
+    const normalizedDishName = dishName.trim().replace(/[\u3000\u00A0\u2000-\u200B\u2028\u2029]/g, "").replace(/[」』]/g, "")
+    const normalizedComment = comment.trim().replace(/[\u3000\u00A0\u2000-\u200B\u2028\u2029]/g, "")
+
+    if (!catId || !normalizedDishName || !score || !date) return
 
     setIsSaving(true)
 
     try {
-      // 新規画像がある場合、圧縮処理を実行
+      const scoreNum = Number.parseFloat(score)
+      
+      // 楽観的更新: まず画像圧縮を待たずにストアに追加（体感速度向上）
+      const tempPayload = {
+        name: normalizedDishName,
+        categoryId: catId,
+        score: scoreNum,
+        comment: normalizedComment,
+        date,
+        image: imagePreview, // 一時的にプレビュー画像を使用
+      }
+
+      let newId: string | undefined
+      if (editingItem) {
+        // 編集時は既存画像を維持
+        const imageToSave = hasNewImageFile.current ? imagePreview : (editingItem.image ?? imagePreview)
+        const updatedItem: Dish = {
+          id: editingItem.id,
+          ...tempPayload,
+          image: imageToSave,
+        }
+        updateDish(editingItem.id, {
+          ...tempPayload,
+          image: imageToSave,
+        })
+        newId = editingItem.id
+      } else {
+        // 新規登録: すぐにストアに追加（楽観的更新）
+        newId = addDish(tempPayload)
+      }
+
+      // 画像圧縮を非同期で実行（バックグラウンド処理）
       let compressedImageDataUrl: string | null = imagePreview
       if (hasNewImageFile.current && fileInputRef.current?.files?.[0]) {
         const originalFile = fileInputRef.current.files[0]
@@ -117,51 +152,45 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
             maxWidthOrHeight: 1280,
             useWebWorker: true,
           })
-          // 圧縮後のファイルを Data URL に変換
           const reader = new FileReader()
           compressedImageDataUrl = await new Promise<string>((resolve, reject) => {
             reader.onload = () => resolve(reader.result as string)
             reader.onerror = reject
             reader.readAsDataURL(compressedFile)
           })
+          
+          // 圧縮完了後にストアを更新
+          if (editingItem) {
+            updateDish(editingItem.id, { image: compressedImageDataUrl })
+          } else if (newId) {
+            updateDish(newId, { image: compressedImageDataUrl })
+          }
         } catch (compressError) {
           console.error("画像圧縮エラー:", compressError)
-          toast({
-            title: "画像圧縮に失敗しました",
-            description: "元の画像をそのまま使用します",
-            variant: "destructive",
-          })
-          // 圧縮失敗時は元の imagePreview を使用
-          compressedImageDataUrl = imagePreview
+          // 圧縮失敗時は元の画像のまま（既にストアに追加済み）
         }
       }
 
-      const scoreNum = Number.parseFloat(score)
-      const payload = {
-        name: dishName.trim(),
+      // Supabase に保存（圧縮後の画像で）
+      const finalPayload = {
+        name: normalizedDishName,
         categoryId: catId,
         score: scoreNum,
-        comment: comment.trim(),
+        comment: normalizedComment,
         date,
         image: compressedImageDataUrl,
       }
 
       if (editingItem) {
-        // 写真: 新しく選ばれた場合のみ URL を更新。未選択の場合は既存画像を維持
         const imageToSave = hasNewImageFile.current ? compressedImageDataUrl : (editingItem.image ?? compressedImageDataUrl)
         const updatedItem: Dish = {
           id: editingItem.id,
-          ...payload,
+          ...finalPayload,
           image: imageToSave,
         }
-        updateDish(editingItem.id, {
-          ...payload,
-          image: imageToSave,
-        })
         await onPersist?.(updatedItem, { previousCategoryId: editingItem.categoryId })
-      } else {
-        const newId = addDish(payload)
-        const newItem: Dish = { id: newId, ...payload }
+      } else if (newId) {
+        const newItem: Dish = { id: newId, ...finalPayload }
         await onPersist?.(newItem, {})
       }
 
@@ -272,7 +301,11 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
         <input
           type="text"
           value={dishName}
-          onChange={(e) => setDishName(e.target.value)}
+          onChange={(e) => {
+            // 入力時にリアルタイムで正規化（全角スペース・特殊文字を除去）
+            const normalized = e.target.value.replace(/[\u3000\u00A0\u2000-\u200B\u2028\u2029]/g, "").replace(/[」』]/g, "")
+            setDishName(normalized)
+          }}
           placeholder="例：黒毛和牛100%ハンバーグ"
           className="rounded-lg border border-input bg-card px-3 py-2.5 text-sm text-foreground outline-none focus:ring-2 focus:ring-ring"
           required
