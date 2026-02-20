@@ -6,6 +6,7 @@ import type { Dish } from "@/lib/data"
 import { Camera, Plus, Check, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
+import imageCompression from "browser-image-compression"
 
 type Props = {
   editingItem: Dish | null
@@ -106,6 +107,35 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
     setIsSaving(true)
 
     try {
+      // 新規画像がある場合、圧縮処理を実行
+      let compressedImageDataUrl: string | null = imagePreview
+      if (hasNewImageFile.current && fileInputRef.current?.files?.[0]) {
+        const originalFile = fileInputRef.current.files[0]
+        try {
+          const compressedFile = await imageCompression(originalFile, {
+            maxSizeMB: 0.8,
+            maxWidthOrHeight: 1280,
+            useWebWorker: true,
+          })
+          // 圧縮後のファイルを Data URL に変換
+          const reader = new FileReader()
+          compressedImageDataUrl = await new Promise<string>((resolve, reject) => {
+            reader.onload = () => resolve(reader.result as string)
+            reader.onerror = reject
+            reader.readAsDataURL(compressedFile)
+          })
+        } catch (compressError) {
+          console.error("画像圧縮エラー:", compressError)
+          toast({
+            title: "画像圧縮に失敗しました",
+            description: "元の画像をそのまま使用します",
+            variant: "destructive",
+          })
+          // 圧縮失敗時は元の imagePreview を使用
+          compressedImageDataUrl = imagePreview
+        }
+      }
+
       const scoreNum = Number.parseFloat(score)
       const payload = {
         name: dishName.trim(),
@@ -113,12 +143,12 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
         score: scoreNum,
         comment: comment.trim(),
         date,
-        image: imagePreview,
+        image: compressedImageDataUrl,
       }
 
       if (editingItem) {
         // 写真: 新しく選ばれた場合のみ URL を更新。未選択の場合は既存画像を維持
-        const imageToSave = hasNewImageFile.current ? imagePreview : (editingItem.image ?? imagePreview)
+        const imageToSave = hasNewImageFile.current ? compressedImageDataUrl : (editingItem.image ?? compressedImageDataUrl)
         const updatedItem: Dish = {
           id: editingItem.id,
           ...payload,
