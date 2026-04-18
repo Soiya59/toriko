@@ -208,7 +208,14 @@ export async function upsertRankingItem(
     const payload = itemToRow(item)
     const table = client.from("ranking_items")
 
-    console.log("送るデータ:", payload)
+    const logPayload = { ...payload }
+    if (
+      typeof logPayload.image_url === "string" &&
+      logPayload.image_url.length > 120
+    ) {
+      logPayload.image_url = `${logPayload.image_url.slice(0, 80)}…(len=${logPayload.image_url.length})`
+    }
+    console.log("送るデータ:", logPayload)
     const upsertRes = await table.upsert(payload, { onConflict: "id" })
     const res = upsertRes as { data: unknown; error: unknown }
     const err = res.error

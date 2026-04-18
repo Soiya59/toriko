@@ -1,12 +1,24 @@
 "use client"
 
-import { useState, useRef, useEffect, type FormEvent, type ChangeEvent } from "react"
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type FormEvent,
+  type ChangeEvent,
+} from "react"
 import { useStore } from "@/lib/store"
 import type { Dish } from "@/lib/data"
 import { Camera, Plus, Check, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { useToast } from "@/hooks/use-toast"
 import imageCompression from "browser-image-compression"
+import { createClient } from "@/lib/supabase"
+import {
+  uploadDishImage,
+  removeDishImageIfOurs,
+} from "@/lib/storage"
 
 type Props = {
   editingItem: Dish | null
@@ -35,6 +47,17 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** 新しく写真が選ばれた場合のみ true（Storage アップロード対象） */
   const hasNewImageFile = useRef(false)
+  /** アップロード用の元ファイル（プレビューは object URL） */
+  const pendingFileRef = useRef<File | null>(null)
+  /** createObjectURL で作ったプレビュー用 URL（破棄が必要） */
+  const previewObjectUrlRef = useRef<string | null>(null)
+
+  const revokePreviewUrl = useCallback(() => {
+    if (previewObjectUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current)
+      previewObjectUrlRef.current = null
+    }
+  }, [])
 
   const sorted = [...categories].sort((a, b) =>
     a.name.localeCompare(b.name, "ja"),
@@ -50,6 +73,8 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
       setScore(String(editingItem.score))
       setDate(editingItem.date)
       setComment(editingItem.comment)
+      revokePreviewUrl()
+      pendingFileRef.current = null
       setImagePreview(editingItem.image ?? null)
       hasNewImageFile.current = false
     } else {
@@ -60,24 +85,29 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
       setScore("")
       setDate(format(new Date(), "yyyy-MM-dd"))
       setComment("")
+      revokePreviewUrl()
+      pendingFileRef.current = null
       setImagePreview(null)
       hasNewImageFile.current = false
     }
-  }, [editingItem])
+  }, [editingItem, revokePreviewUrl])
+
+  useEffect(() => () => revokePreviewUrl(), [revokePreviewUrl])
 
   function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     hasNewImageFile.current = true
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      setImagePreview(ev.target?.result as string)
-    }
-    reader.readAsDataURL(file)
+    pendingFileRef.current = file
+    revokePreviewUrl()
+    const url = URL.createObjectURL(file)
+    previewObjectUrlRef.current = url
+    setImagePreview(url)
   }
 
   function resetFormAndComplete() {
     setSuccess(false)
+    setIsSaving(false)
     setCategoryId("")
     setNewCategoryName("")
     setIsNewCategory(false)
@@ -85,6 +115,9 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
     setScore("")
     setDate(format(new Date(), "yyyy-MM-dd"))
     setComment("")
+    revokePreviewUrl()
+    pendingFileRef.current = null
+    if (fileInputRef.current) fileInputRef.current.value = ""
     setImagePreview(null)
     hasNewImageFile.current = false
     onClearEdit()
@@ -112,86 +145,71 @@ export function RegistrationForm({ editingItem, onComplete, onClearEdit, onPersi
 
     try {
       const scoreNum = Number.parseFloat(score)
-      
-      // 楽観的更新: まず画像圧縮を待たずにストアに追加（体感速度向上）
+      const supabase = createClient()
+
+      const optimisticImage =
+        hasNewImageFile.current && imagePreview
+          ? imagePreview
+          : editingItem?.image ?? null
+
       const tempPayload = {
         name: normalizedDishName,
         categoryId: catId,
         score: scoreNum,
         comment: normalizedComment,
         date,
-        image: imagePreview, // 一時的にプレビュー画像を使用
+        image: optimisticImage,
       }
 
       let newId: string | undefined
       if (editingItem) {
-        // 編集時は既存画像を維持
-        const imageToSave = hasNewImageFile.current ? imagePreview : (editingItem.image ?? imagePreview)
-        const updatedItem: Dish = {
-          id: editingItem.id,
-          ...tempPayload,
-          image: imageToSave,
-        }
-        updateDish(editingItem.id, {
-          ...tempPayload,
-          image: imageToSave,
-        })
+        updateDish(editingItem.id, tempPayload)
         newId = editingItem.id
       } else {
-        // 新規登録: すぐにストアに追加（楽観的更新）
         newId = addDish(tempPayload)
       }
 
-      // 画像圧縮を非同期で実行（バックグラウンド処理）
-      let compressedImageDataUrl: string | null = imagePreview
-      if (hasNewImageFile.current && fileInputRef.current?.files?.[0]) {
-        const originalFile = fileInputRef.current.files[0]
+      let finalImageUrl: string | null = editingItem?.image ?? null
+
+      if (hasNewImageFile.current && pendingFileRef.current && newId) {
+        const originalFile = pendingFileRef.current
+        const previousUrl = editingItem?.image ?? null
         try {
           const compressedFile = await imageCompression(originalFile, {
-            maxSizeMB: 0.8,
-            maxWidthOrHeight: 1280,
+            maxSizeMB: 2,
+            maxWidthOrHeight: 1920,
             useWebWorker: true,
           })
-          const reader = new FileReader()
-          compressedImageDataUrl = await new Promise<string>((resolve, reject) => {
-            reader.onload = () => resolve(reader.result as string)
-            reader.onerror = reject
-            reader.readAsDataURL(compressedFile)
-          })
-          
-          // 圧縮完了後にストアを更新
-          if (editingItem) {
-            updateDish(editingItem.id, { image: compressedImageDataUrl })
-          } else if (newId) {
-            updateDish(newId, { image: compressedImageDataUrl })
+          const publicUrl = await uploadDishImage(supabase, newId, compressedFile)
+          if (previousUrl && previousUrl !== publicUrl) {
+            await removeDishImageIfOurs(supabase, previousUrl)
           }
-        } catch (compressError) {
-          console.error("画像圧縮エラー:", compressError)
-          // 圧縮失敗時は元の画像のまま（既にストアに追加済み）
+          finalImageUrl = publicUrl
+          updateDish(newId, { image: publicUrl })
+        } catch (compressOrUploadError) {
+          console.error("画像の圧縮またはアップロードに失敗:", compressOrUploadError)
+          throw compressOrUploadError instanceof Error
+            ? compressOrUploadError
+            : new Error("画像の保存に失敗しました")
         }
       }
 
-      // Supabase に保存（圧縮後の画像で）
       const finalPayload = {
         name: normalizedDishName,
         categoryId: catId,
         score: scoreNum,
         comment: normalizedComment,
         date,
-        image: compressedImageDataUrl,
+        image: finalImageUrl,
       }
 
       if (editingItem) {
-        const imageToSave = hasNewImageFile.current ? compressedImageDataUrl : (editingItem.image ?? compressedImageDataUrl)
-        const updatedItem: Dish = {
-          id: editingItem.id,
-          ...finalPayload,
-          image: imageToSave,
-        }
-        await onPersist?.(updatedItem, { previousCategoryId: editingItem.categoryId })
+        await onPersist?.(
+          { id: editingItem.id, ...finalPayload },
+          { previousCategoryId: editingItem.categoryId },
+        )
       } else if (newId) {
-        const newItem: Dish = { id: newId, ...finalPayload }
-        await onPersist?.(newItem, {})
+        await onPersist?.({ id: newId, ...finalPayload }, {})
       }
 
       // 成功通知を表示

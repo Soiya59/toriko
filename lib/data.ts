@@ -5,6 +5,7 @@ export type GourmetItem = {
   categoryId: string
   score: number
   comment: string
+  /** 料理写真の公開 URL（Supabase Storage）。レガシーで data URL が入っている場合あり */
   image: string | null
   date: string // YYYY-MM-DD（食べた日・訪問日など）
 }
